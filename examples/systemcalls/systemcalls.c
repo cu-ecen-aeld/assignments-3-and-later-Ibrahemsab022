@@ -1,5 +1,6 @@
 #include "systemcalls.h"
 
+
 /**
  * @param cmd the command to execute with system()
  * @return true if the command in @param cmd was executed
@@ -17,7 +18,25 @@ bool do_system(const char *cmd)
  *   or false() if it returned a failure
 */
 
-    return true;
+	if (cmd == NULL) {
+        return false; // Command is empty
+    }
+
+    int ret = system(cmd);
+
+    // Check if the system() call succeeded.
+    if (ret == -1) {
+        // system() itself failed.
+        return false;
+    }
+
+    // Check the return status of the command executed by system().
+    if (WIFEXITED(ret) && WEXITSTATUS(ret) == 0) {
+        // Command exited normally with a status of 0.
+        return true;
+    }
+
+    return false;
 }
 
 /**
@@ -60,8 +79,43 @@ bool do_exec(int count, ...)
 */
 
     va_end(args);
+    
+     // Validate that command[0] is an absolute path.
+    if (command[0] == NULL || command[0][0] != '/') {
+        fprintf(stderr, "Error: Command must be an absolute path\n");
+        return false;
+    }
 
-    return true;
+    pid_t pid = fork(); // Create a child process.
+    int status;
+
+    if (pid < 0) {
+        // Fork failed.
+        perror("fork");
+        return false;
+    } 
+    
+    else if (pid == 0) {
+        // Child process: execute the command.
+        execv(command[0], command);
+
+        // If execv() returns, it means it failed.
+        perror("execv");
+        exit(EXIT_FAILURE);
+    } 
+    
+    else {
+        // Parent process: wait for the child process.
+        
+        if (waitpid(pid, &status, 0) == -1) {
+            perror("waitpid");
+            return false;
+        }
+        
+        }
+
+ return WIFEXITED(status) && WEXITSTATUS(status) == 0;
+    //return true;
 }
 
 /**
@@ -95,5 +149,51 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
 
     va_end(args);
 
-    return true;
+
+     // Validate that command[0] is an absolute path.
+    if (command[0] == NULL || command[0][0] != '/') {
+        fprintf(stderr, "Error: Command must be an absolute path\n");
+        return false;
+    }
+
+    pid_t pid = fork();
+    int status;
+
+    if (pid < 0) {
+        perror("fork");
+        return false;
+    } 
+    
+    else if (pid == 0) {
+        int fd = open(outputfile, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        if (fd < 0) {
+            perror("open");
+            exit(EXIT_FAILURE);
+            return false;
+        }
+
+        if (dup2(fd, STDOUT_FILENO) < 0) {
+            perror("dup2");
+            close(fd);
+            exit(EXIT_FAILURE);
+            return false;
+        }
+        close(fd);
+
+        execv(command[0], command);
+        perror("execv");
+        exit(EXIT_FAILURE);
+        return false;
+    } 
+    
+    else {
+        if (waitpid(pid, &status, 0) == -1) {
+            perror("waitpid");
+            return false;
+        }
+        
+        }
+
+        return WIFEXITED(status) && WEXITSTATUS(status) == 0;
+    //return true;
 }
